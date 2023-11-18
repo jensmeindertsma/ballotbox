@@ -1,41 +1,131 @@
+use crossterm::{
+    event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Alignment, Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    symbols,
+    widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
+};
 use std::{
     io::{self},
     time::Duration,
 };
 
-use crossterm::{
-    event::{Event, KeyCode, KeyEventKind},
-    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::widgets::ListState;
-
 fn main() {
-    let mut stdout = io::stdout().lock();
+    setup_terminal().unwrap();
+    let mut terminal = ratatui::Terminal::new(CrosstermBackend::new(io::stdout().lock())).unwrap();
 
-    setup_terminal(&mut stdout);
+    let mut state = ListState::default().with_selected(Some(0));
 
-    let state = ListState::default();
+    let items = ["Votes", "People", "Settings"];
 
     loop {
+        terminal
+            .draw(|frame| {
+                let layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Min(25), Constraint::Percentage(100)])
+                    .split(frame.size());
+
+                let navigation_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Percentage(100), Constraint::Min(3)])
+                    .split(layout[0]);
+
+                frame.render_stateful_widget(
+                    List::new(items.iter().map(|i| ListItem::new(*i)).collect::<Vec<_>>())
+                        .block(
+                            Block::default()
+                                .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+                                .padding(Padding::horizontal(1)),
+                        )
+                        .style(Style::default().fg(Color::White))
+                        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+                        .highlight_symbol(">> "),
+                    navigation_layout[0],
+                    &mut state,
+                );
+
+                frame.render_widget(
+                    Paragraph::new("Press `q` to quit")
+                        .block(
+                            Block::default()
+                                .border_set(symbols::border::Set {
+                                    top_left: symbols::line::NORMAL.vertical_right,
+                                    top_right: symbols::line::NORMAL.vertical_left,
+                                    ..symbols::border::PLAIN
+                                })
+                                .borders(Borders::ALL),
+                        )
+                        .alignment(Alignment::Center),
+                    navigation_layout[1],
+                );
+
+                frame.render_widget(
+                    Paragraph::new(items[state.selected().unwrap()]).block(
+                        Block::default()
+                            .padding(Padding::horizontal(1))
+                            .borders(Borders::ALL),
+                    ),
+                    layout[1],
+                )
+            })
+            .unwrap();
+
         // Spend 16ms waiting for input event, process it, then proceed to next render iteration.
         if crossterm::event::poll(Duration::from_millis(16)).unwrap() {
             if let Event::Key(key) = crossterm::event::read().unwrap() {
                 if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            restore_terminal();
+                    match key {
+                        KeyEvent {
+                            modifiers: KeyModifiers::CONTROL,
+                            code: KeyCode::Char('c'),
+                            ..
+                        }
+                        | KeyEvent {
+                            code: KeyCode::Char('q'),
+                            ..
+                        } => {
                             break;
                         }
-                        KeyCode::Up => { /* NEXT LIST ITEM */},
-                        KeyCode::Down => 
+                        KeyEvent {
+                            code: KeyCode::Up, ..
+                        } => {
+                            let i = state.selected().unwrap();
+
+                            if i == 0 {
+                                state.select(Some(items.len() - 1));
+                            } else {
+                                state.select(Some(i - 1));
+                            }
+                        }
+                        KeyEvent {
+                            code: KeyCode::Down,
+                            ..
+                        } => {
+                            let i = state.selected().unwrap();
+
+                            if i >= items.len() - 1 {
+                                state.select(Some(0));
+                            } else {
+                                state.select(Some(i + 1));
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
         }
     }
+
+    // Terminal restoration is best-effort.
+    let _ = restore_terminal();
 }
 
-fn setup_terminal(stdout: &mut io::StdoutLock<'static>) -> io::Result<()> {
+fn setup_terminal() -> io::Result<()> {
     // Extend the default panic handler so we always try to restore the terminal, even when we panic.
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
