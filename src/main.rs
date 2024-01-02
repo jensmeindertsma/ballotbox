@@ -5,12 +5,13 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     symbols,
     widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
 };
 use std::{
     io::{self},
+    thread,
     time::Duration,
 };
 
@@ -20,7 +21,9 @@ fn main() {
 
     let mut state = ListState::default().with_selected(Some(0));
 
-    let items = ["Votes", "People", "Settings"];
+    let items = [Item::Votes, Item::People, Item::Settings];
+
+    thread::spawn(|| {});
 
     loop {
         terminal
@@ -36,15 +39,29 @@ fn main() {
                     .split(layout[0]);
 
                 frame.render_stateful_widget(
-                    List::new(items.iter().map(|i| ListItem::new(*i)).collect::<Vec<_>>())
-                        .block(
-                            Block::default()
-                                .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
-                                .padding(Padding::horizontal(1)),
-                        )
-                        .style(Style::default().fg(Color::White))
-                        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-                        .highlight_symbol(">> "),
+                    List::new(
+                        items
+                            .iter()
+                            .map(|i| {
+                                ListItem::new(match i {
+                                    Item::Votes => "Votes",
+                                    Item::People => "People",
+                                    Item::Settings => "Settings",
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .block(
+                        Block::default()
+                            .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+                            .border_set(symbols::border::Set {
+                                top_right: symbols::line::HORIZONTAL_DOWN,
+                                ..symbols::border::PLAIN
+                            })
+                            .padding(Padding::horizontal(1)),
+                    )
+                    .highlight_style(Style::default().add_modifier(Modifier::BOLD))
+                    .highlight_symbol(">> "),
                     navigation_layout[0],
                     &mut state,
                 );
@@ -56,6 +73,7 @@ fn main() {
                                 .border_set(symbols::border::Set {
                                     top_left: symbols::line::NORMAL.vertical_right,
                                     top_right: symbols::line::NORMAL.vertical_left,
+                                    bottom_right: symbols::line::HORIZONTAL_UP,
                                     ..symbols::border::PLAIN
                                 })
                                 .borders(Borders::ALL),
@@ -65,10 +83,15 @@ fn main() {
                 );
 
                 frame.render_widget(
-                    Paragraph::new(items[state.selected().unwrap()]).block(
+                    match items[state.selected().unwrap()] {
+                        Item::Votes => Paragraph::new("Votes here"),
+                        Item::People => Paragraph::new("People here"),
+                        Item::Settings => Paragraph::new("Settings here"),
+                    }
+                    .block(
                         Block::default()
                             .padding(Padding::horizontal(1))
-                            .borders(Borders::ALL),
+                            .borders(Borders::TOP | Borders::BOTTOM | Borders::RIGHT),
                     ),
                     layout[1],
                 )
@@ -123,6 +146,12 @@ fn main() {
 
     // Terminal restoration is best-effort.
     let _ = restore_terminal();
+}
+
+enum Item {
+    Votes,
+    People,
+    Settings,
 }
 
 fn setup_terminal() -> io::Result<()> {
